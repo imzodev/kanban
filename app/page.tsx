@@ -2,6 +2,8 @@
 import {
   DndContext,
   DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
   PointerSensor,
   useSensor,
   useSensors,
@@ -11,6 +13,7 @@ import {
   rectSortingStrategy,
 } from "@dnd-kit/sortable";
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Column } from "./components/Column";
 import { TaskCard } from "./components/TaskCard";
 
@@ -42,6 +45,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [newColumnName, setNewColumnName] = useState("");
   const [newTaskTitle, setNewTaskTitle] = useState<Record<number, string>>({});
+  const [activeTask, setActiveTask] = useState<Task | null>(null);
 
   const board = useMemo(() => (boards && boards[0]) ?? null, [boards]);
 
@@ -133,6 +137,16 @@ export default function Home() {
     await refresh();
   }
 
+  async function handleDragStart(event: DragStartEvent) {
+    const { active } = event;
+    const taskId = active.id as number;
+    setActiveTask(
+      board?.columns
+        .flatMap((c) => c.tasks)
+        .find((t) => t.id === taskId) || null
+    );
+  }
+
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over || !active) return;
@@ -165,6 +179,7 @@ export default function Home() {
 
       return newBoards;
     });
+    setActiveTask(null);
   }
 
   const sensors = useSensors(
@@ -207,7 +222,11 @@ export default function Home() {
     return <div className="min-h-screen flex items-center justify-center">No board</div>;
 
   return (
-    <DndContext onDragEnd={handleDragEnd} sensors={sensors}>
+    <DndContext
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      sensors={sensors}
+    >
       <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-indigo-100 dark:from-indigo-950 dark:to-indigo-900">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Header */}
@@ -285,6 +304,23 @@ export default function Home() {
           </div>
         </div>
       </div>
+      {createPortal(
+        <DragOverlay>
+          {activeTask ? (
+            <TaskCard id={activeTask.id}>
+              <div className="text-sm font-medium tracking-tight">
+                {activeTask.title}
+              </div>
+              {activeTask.description ? (
+                <div className="text-xs text-gray-600 dark:text-gray-300 mt-1">
+                  {activeTask.description}
+                </div>
+              ) : null}
+            </TaskCard>
+          ) : null}
+        </DragOverlay>,
+        document.body
+      )}
     </DndContext>
   );
 }
