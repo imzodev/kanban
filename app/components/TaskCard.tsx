@@ -4,9 +4,11 @@ import { CSS } from "@dnd-kit/utilities";
 export function TaskCard({
   children,
   id,
+  isDragging = false,
 }: {
   children: React.ReactNode;
   id: number;
+  isDragging?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
     id,
@@ -14,6 +16,7 @@ export function TaskCard({
 
   const style = {
     transform: CSS.Translate.toString(transform),
+    opacity: isDragging ? 0 : 1,
   };
 
   return (

@@ -264,7 +264,11 @@ export default function Home() {
                 >
                   <div className="space-y-3">
                     {col.tasks.map((t) => (
-                      <TaskCard key={t.id} id={t.id}>
+                      <TaskCard
+                        key={t.id}
+                        id={t.id}
+                        isDragging={activeTask?.id === t.id}
+                      >
                         <div className="text-sm font-medium tracking-tight">{t.title}</div>
                         {t.description ? (
                           <div className="text-xs text-gray-600 dark:text-gray-300 mt-1">
