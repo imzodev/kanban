@@ -1,5 +1,18 @@
 "use client";
+import {
+  DndContext,
+  DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  rectSortingStrategy,
+} from "@dnd-kit/sortable";
 import { useEffect, useMemo, useState } from "react";
+import { Column } from "./components/Column";
+import { TaskCard } from "./components/TaskCard";
 
 type Task = {
   id: number;
@@ -120,6 +133,48 @@ export default function Home() {
     await refresh();
   }
 
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || !active) return;
+
+    const taskId = active.id as number;
+    const toColumnId = over.id as number;
+
+    setBoards((prevBoards) => {
+      if (!prevBoards) return null;
+      const newBoards = [...prevBoards];
+      const board = newBoards[0];
+      if (!board) return prevBoards;
+
+      const activeColumn = board.columns.find((c) =>
+        c.tasks.some((t) => t.id === taskId)
+      );
+      const overColumn = board.columns.find((c) => c.id === toColumnId);
+      if (!activeColumn || !overColumn) return prevBoards;
+
+      const task = activeColumn.tasks.find((t) => t.id === taskId);
+      if (!task) return prevBoards;
+
+      // Optimistic update
+      task.columnId = toColumnId;
+      activeColumn.tasks = activeColumn.tasks.filter((t) => t.id !== taskId);
+      overColumn.tasks.push(task);
+
+      // Trigger API call
+      moveTask(task, toColumnId);
+
+      return newBoards;
+    });
+  }
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
+
   if (loading)
     return (
       <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-indigo-100 dark:from-indigo-950 dark:to-indigo-900">
@@ -152,90 +207,84 @@ export default function Home() {
     return <div className="min-h-screen flex items-center justify-center">No board</div>;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-indigo-100 dark:from-indigo-950 dark:to-indigo-900">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">{board.name}</h1>
-          <div className="flex gap-2">
-            <input
-              className="border border-indigo-200 dark:border-indigo-500/30 rounded-md px-3 py-2 text-sm bg-white dark:bg-indigo-950/30 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 dark:focus:ring-indigo-400/30"
-              placeholder="New column name"
-              value={newColumnName}
-              onChange={(e) => setNewColumnName(e.target.value)}
-            />
-            <button
-              onClick={addColumn}
-              className="text-sm rounded-md bg-indigo-600 text-white px-4 py-2 shadow hover:bg-indigo-500 active:bg-indigo-600/90 transition"
-            >
-              Add Column
-            </button>
+    <DndContext onDragEnd={handleDragEnd} sensors={sensors}>
+      <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-indigo-100 dark:from-indigo-950 dark:to-indigo-900">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">{board.name}</h1>
+            <div className="flex gap-2">
+              <input
+                className="border border-indigo-200 dark:border-indigo-500/30 rounded-md px-3 py-2 text-sm bg-white dark:bg-indigo-950/30 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 dark:focus:ring-indigo-400/30"
+                placeholder="New column name"
+                value={newColumnName}
+                onChange={(e) => setNewColumnName(e.target.value)}
+              />
+              <button
+                onClick={addColumn}
+                className="text-sm rounded-md bg-indigo-600 text-white px-4 py-2 shadow hover:bg-indigo-500 active:bg-indigo-600/90 transition"
+              >
+                Add Column
+              </button>
+            </div>
+          </div>
+
+          {/* Columns */}
+          <div className="flex gap-4 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {board.columns.map((col) => (
+              <Column
+                key={col.id}
+                id={col.id}
+                name={col.name}
+                tasksCount={col.tasks.length}
+              >
+                {/* Tasks */}
+                <SortableContext
+                  items={col.tasks.map((t) => t.id)}
+                  strategy={rectSortingStrategy}
+                >
+                  <div className="space-y-3">
+                    {col.tasks.map((t) => (
+                      <TaskCard key={t.id} id={t.id}>
+                        <div className="text-sm font-medium tracking-tight">{t.title}</div>
+                        {t.description ? (
+                          <div className="text-xs text-gray-600 dark:text-gray-300 mt-1">
+                            {t.description}
+                          </div>
+                        ) : null}
+                        <div className="mt-3 flex gap-2 items-center">
+                          <button
+                            onClick={() => deleteTask(t.id)}
+                            className="text-xs text-red-600 hover:underline"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </TaskCard>
+                    ))}
+                  </div>
+                </SortableContext>
+
+                {/* Add task */}
+                <div className="mt-4 flex gap-2">
+                  <input
+                    className="flex-1 border border-indigo-950/10 dark:border-white/10 rounded-md px-3 py-2 text-sm bg-white dark:bg-indigo-950/20 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 dark:focus:ring-indigo-400/30"
+                    placeholder="New task title"
+                    value={newTaskTitle[col.id] ?? ""}
+                    onChange={(e) => setNewTaskTitle((prev) => ({ ...prev, [col.id]: e.target.value }))}
+                  />
+                  <button
+                    onClick={() => addTask(col.id)}
+                    className="text-sm rounded-md bg-indigo-600 text-white px-3 py-2 shadow hover:bg-indigo-500 active:bg-indigo-600/90 transition"
+                  >
+                    Add
+                  </button>
+                </div>
+              </Column>
+            ))}
           </div>
         </div>
-
-        {/* Columns */}
-        <div className="flex gap-4 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {board.columns.map((col) => (
-            <div key={col.id} className="w-[320px] shrink-0 rounded-xl border border-indigo-200 dark:border-indigo-500/30 bg-white/70 dark:bg-indigo-950/30 backdrop-blur p-4 shadow-sm">
-              {/* Column header */}
-              <div className="sticky top-0 bg-transparent z-10 -mx-4 px-4 pb-3 flex items-center justify-between">
-                <h2 className="font-medium tracking-tight">{col.name}</h2>
-                <span className="text-xs rounded-full px-2 py-0.5 bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-200">
-                  {col.tasks.length}
-                </span>
-              </div>
-
-              {/* Tasks */}
-              <div className="space-y-3">
-                {col.tasks.map((t) => (
-                  <div
-                    key={t.id}
-                    className="group rounded-lg bg-white/70 dark:bg-indigo-900/95 border border-indigo-200 dark:border-indigo-500/30 backdrop-blur p-3 shadow-sm hover:shadow-md transition"
-                  >
-                    <div className="text-sm font-medium tracking-tight">{t.title}</div>
-                    {t.description ? (
-                      <div className="text-xs text-gray-600 dark:text-gray-300 mt-1">{t.description}</div>
-                    ) : null}
-                    <div className="mt-3 flex gap-2 items-center">
-                      <select
-                        className="text-xs border border-indigo-200 dark:border-indigo-500/30 rounded px-2 py-1 bg-white dark:bg-indigo-950/30"
-                        value={t.columnId}
-                        onChange={(e) => moveTask(t, Number(e.target.value))}
-                      >
-                        {board.columns.map((c) => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </select>
-                      <button
-                        onClick={() => deleteTask(t.id)}
-                        className="text-xs text-red-600 hover:underline"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Add task */}
-              <div className="mt-4 flex gap-2">
-                <input
-                  className="flex-1 border border-indigo-950/10 dark:border-white/10 rounded-md px-3 py-2 text-sm bg-white dark:bg-indigo-950/20 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 dark:focus:ring-indigo-400/30"
-                  placeholder="New task title"
-                  value={newTaskTitle[col.id] ?? ""}
-                  onChange={(e) => setNewTaskTitle((prev) => ({ ...prev, [col.id]: e.target.value }))}
-                />
-                <button
-                  onClick={() => addTask(col.id)}
-                  className="text-sm rounded-md bg-indigo-600 text-white px-3 py-2 shadow hover:bg-indigo-500 active:bg-indigo-600/90 transition"
-                >
-                  Add
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
       </div>
-    </div>
+    </DndContext>
   );
 }
